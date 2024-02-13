@@ -6,6 +6,8 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 import xgboost as xgb
+from scipy.sparse import csr_matrix
+from sklearn.decomposition import PCA
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 
@@ -54,9 +56,19 @@ def load_saved_data_generator(save_path, data_type, tertiary, num_epochs=2):
     numpy.ndarray: Target values for a single ID.
     """
     if tertiary == "bert":
-        brent_csv_path = "./Datasets/Brent_spotPrice_Extrapolated.csv"
+        csv_path = "./Datasets/Brent_spotPrice_Extrapolated.csv"
     elif tertiary == "gas":
-        brent_csv_path = "./Datasets/Gas_spotPrice_Extrapolated.csv"
+        csv_path = "./Datasets/Gas_spotPrice_Extrapolated.csv"
+    elif tertiary == "titles":
+        titles_path = "./Datasets/tfidf_matrix_with_dates.npz"
+        titles_data = np.load(titles_path, allow_pickle=True)
+        titles_matrix = csr_matrix(
+            (titles_data["data"], (titles_data["row"], titles_data["col"])),
+            shape=titles_data["shape"],
+        )
+        dates_in_titles = titles_matrix[
+            :, -1
+        ].toarray()  # Extract dates from the titles matrix
 
     for epoch in range(num_epochs):
         print(f"Starting epoch {epoch + 1}/{num_epochs}")
@@ -78,28 +90,65 @@ def load_saved_data_generator(save_path, data_type, tertiary, num_epochs=2):
             print(f"Processing file {file_count}/{len(file_list)}: {selected_file}")
 
             for selected_id in np.unique(ids):
-                target_dates = []
                 id_filter = ids == selected_id
                 id_sequences = sequences[id_filter]
                 id_dates = dates[id_filter]
+                target_dates = []
 
                 if len(id_sequences) > 1:
                     target_dates.extend(
                         id_dates[1:, -1]
-                    )  # Target date is last date of next sequence
+                    )  # Target date is the last date of the next sequence
                 target_dates = np.array(target_dates)
-                brent = load_additional_data(brent_csv_path, target_dates)
 
                 combined_input = np.stack(
                     [sequences[id_filter], dates[id_filter]], axis=-1
                 ).reshape(-1, 14)
                 combined_input = combined_input[:-1]
 
-                # Reshape brent to match the number of rows in combined_input
-                brent = brent.reshape(-1, 1)
+                if tertiary in ["bert", "gas"]:
+                    tertiary_data = load_additional_data(csv_path, target_dates)
+                    tertiary_data = tertiary_data.reshape(-1, 1)
+                    combined_input = np.concatenate(
+                        [combined_input, tertiary_data], axis=1
+                    )
 
-                # Concatenate brent as an additional feature
-                combined_input = np.concatenate([combined_input, brent], axis=1)
+                elif tertiary == "titles":
+                    # Adjust the shape of title_features to match the number of features in titles_matrix excluding the date
+                    title_features = np.zeros(
+                        (id_sequences.shape[0], titles_matrix.shape[1] - 1)
+                    )
+
+                    # Convert target_dates from Unix timestamps to datetime.date objects
+                    target_dates = [
+                        datetime.fromtimestamp(ts).date() for ts in target_dates
+                    ]
+
+                    # Flatten and convert the dates_in_titles array
+                    flattened_dates_in_titles = [
+                        datetime.fromtimestamp(ts).date()
+                        for sublist in dates_in_titles
+                        for ts in sublist
+                    ]
+
+                    for idx, target_date in enumerate(target_dates):
+                        if target_date in flattened_dates_in_titles:
+                            # Find the first occurrence of the target_date in the flattened list
+                            row_idx = flattened_dates_in_titles.index(target_date)
+                            title_row = titles_matrix.getrow(row_idx).toarray()
+                            # Assign title_row to title_features, excluding the date column
+                            title_features[idx, :] = title_row[
+                                0, :-1
+                            ]  # Exclude the last element (date)
+
+                    title_features = title_features[:-1]
+                    pca = PCA(n_components=1)
+                    title_features_reduced = pca.fit_transform(title_features)
+
+                    # Combine id_sequences, expanded id_dates, and title_features
+                    combined_input = np.concatenate(
+                        [combined_input, title_features_reduced], axis=1
+                    )
 
                 targets_resize = targets[id_filter]
                 targets_resize = targets_resize[:-1]
@@ -189,4 +238,4 @@ def train_and_evaluate_model(
 
 if __name__ == "__main__":
     sequence_path = "./Datasets/Sequences"
-    train_and_evaluate_model(sequence_path, "gas", num_epochs=1)
+    train_and_evaluate_model(sequence_path, "titles", num_epochs=1)

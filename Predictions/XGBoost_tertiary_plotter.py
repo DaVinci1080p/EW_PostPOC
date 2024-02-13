@@ -249,8 +249,9 @@ def main():
     """
     Main function to execute the model prediction and plotting process.
     """
+    tertiary = "brent"
     data_path = "./Datasets/Sequences"
-    model_path = "./Models/XGBoost/xgb_brent-model_epochs-1.json"
+    model_path = f"./Models/XGBoost/xgb_{tertiary}-model_epochs-1.json"
     num_ids = 2
 
     print("Loading model...")
@@ -273,7 +274,7 @@ def main():
         "f11": "Date5",
         "f12": "Date6",
         "f13": "Date7",
-        "f14": "BrentSpotPrice",
+        "f14": f"{tertiary}",
     }
     feature_importance = model.get_score(
         importance_type="weight"
@@ -303,7 +304,7 @@ def main():
     plt.gca().invert_yaxis()  # Invert y-axis to have the most important feature on top
 
     # When saving the figure, make sure to include the extra space for the legend
-    base_filename = "./Plots/XGB_Tertiary_Model_FeatureImportance"
+    base_filename = f"./Plots/XGB_{tertiary}_Model_FeatureImportance"
     extension = ".png"
     counter = 0
     filename = f"{base_filename}{extension}"
@@ -324,11 +325,11 @@ def main():
         all_dates,
         target_dates,
         selected_ids,
-        brent,
+        tertiary_data,
     ) = filter_data_for_ids(data, num_ids=num_ids)
 
     print(f"Selected IDs for prediction: {selected_ids}")
-    combined_input = flatten_input(sequences, all_dates, brent)
+    combined_input = flatten_input(sequences, all_dates, tertiary_data)
 
     print("Making predictions...")
     dmatrix = xgb.DMatrix(combined_input)
