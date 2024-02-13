@@ -1,3 +1,6 @@
+*.zip
+
+# Preprocessed files are stored as .npz
 *.npz
 
 # Byte-compiled / optimized / DLL files

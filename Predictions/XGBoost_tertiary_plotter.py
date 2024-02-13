@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import xgboost as xgb
-from matplotlib import colormaps
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 
@@ -97,7 +96,37 @@ def load_additional_data(csv_file, target_dates):
     return X_add
 
 
-def filter_data_for_ids(data, num_ids=2):
+def load_additional_data_sequences(tertiary, target_dates):
+    if tertiary == "brent":
+        file_path = "./Datasets/Sequences/Brent_sequences.npz"
+    elif tertiary == "gas":
+        file_path = "./Datasets/Sequences/Gas_sequences.npz"
+
+    data = np.load(file_path, allow_pickle=True)
+
+    # Convert target_dates to a numpy array for efficient processing
+    target_dates_array = np.array(target_dates)
+
+    # Initialize an empty list to store the filtered sequences
+    filtered_sequences = []
+
+    # Iterate through each sequence except the last one
+    for i in range(len(data["sequences"]) - 1):
+        # Get the last date of the next sequence
+        next_sequence_last_date = data["dates"][i + 1][-1]
+
+        # Check if the last date of the next sequence is in the target dates
+        if next_sequence_last_date in target_dates_array:
+            # If it matches, add the current sequence to the filtered list
+            filtered_sequences.append(data["sequences"][i])
+
+    # Convert the list to a NumPy array
+    X_add = np.array(filtered_sequences)
+
+    return X_add
+
+
+def filter_data_for_ids(data, num_ids=2, tertiarySequences=True):
     """
     Filter data for a specified number of unique IDs.
 
@@ -136,17 +165,24 @@ def filter_data_for_ids(data, num_ids=2):
             target_dates.extend(
                 dates[1:, -1]
             )  # Target date is last date of next sequence
+            if tertiarySequences:
+                brent_sequences = load_additional_data_sequences(
+                    "gas", np.array(dates[1:, -1])
+                )
             brent.extend(load_additional_data(brent_csv_path, np.array(dates[1:, -1])))
         else:
             print(f"Insufficient data for ID {id_}")
         # print(np.array(target_dates).shape)
+        if tertiarySequences:
+            brent1 = brent_sequences
+        brent1 = np.array(brent)
     return (
         np.array(filtered_sequences),
         np.array(filtered_targets),
         np.array(filtered_dates),
         np.array(target_dates),
         selected_ids,
-        np.array(brent),
+        brent1,
     )
 
 
@@ -177,7 +213,7 @@ def plot_predictions(id_data):
     id_data (dict): Dictionary containing dates, actuals, and predictions for each ID.
     """
     plt.figure(figsize=(14, 6))
-    colors = colormaps.get_cmap("tab10")  # Updated method to get colormap
+    colors = plt.get_cmap("tab10")  # Updated method to get colormap
 
     for i, (id_, data) in enumerate(id_data.items()):
         # Convert dates to a plot-friendly format
@@ -250,7 +286,7 @@ def main():
     Main function to execute the model prediction and plotting process.
     """
     data_path = "./Datasets/Sequences"
-    model_path = "./Models/XGBoost/xgb_brent-model_epochs-1.json"
+    model_path = "./Models/XGBoost/xgb_gas_Sequences-model_epochs-1_1.json"
     num_ids = 2
 
     print("Loading model...")
@@ -273,7 +309,13 @@ def main():
         "f11": "Date5",
         "f12": "Date6",
         "f13": "Date7",
-        "f14": "BrentSpotPrice",
+        "f14": "Gas1",
+        "f15": "Gas2",
+        "f16": "Gas3",
+        "f17": "Gas4",
+        "f18": "Gas5",
+        "f19": "Gas6",
+        "f20": "Gas7",
     }
     feature_importance = model.get_score(
         importance_type="weight"

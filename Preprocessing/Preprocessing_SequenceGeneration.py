@@ -181,7 +181,7 @@ def process_file(
 
 
 def main():
-    timeseries_folder_path = "D:\Datasets\Timeseries"
+    timeseries_folder_path = "G:\Thesis_Dataset"
     shared_max_ids = multiprocessing.Value("i", 10000)  # Maximum unique IDs to process
     shared_lock = multiprocessing.Lock()
     stop_flag = multiprocessing.Event()

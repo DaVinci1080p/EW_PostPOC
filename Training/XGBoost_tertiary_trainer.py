@@ -40,7 +40,39 @@ def load_additional_data(csv_file, target_dates):
     return X_add
 
 
-def load_saved_data_generator(save_path, data_type, tertiary, num_epochs=2):
+def load_additional_data_sequences(tertiary, target_dates):
+    if tertiary == "brent":
+        file_path = "./Datasets/Sequences/Brent_sequences.npz"
+    elif tertiary == "gas":
+        file_path = "./Datasets/Sequences/Gas_sequences.npz"
+
+    data = np.load(file_path, allow_pickle=True)
+
+    # Convert target_dates to a numpy array for efficient processing
+    target_dates_array = np.array(target_dates)
+
+    # Initialize an empty list to store the filtered sequences
+    filtered_sequences = []
+
+    # Iterate through each sequence except the last one
+    for i in range(len(data["sequences"]) - 1):
+        # Get the last date of the next sequence
+        next_sequence_last_date = data["dates"][i + 1][-1]
+
+        # Check if the last date of the next sequence is in the target dates
+        if next_sequence_last_date in target_dates_array:
+            # If it matches, add the current sequence to the filtered list
+            filtered_sequences.append(data["sequences"][i])
+
+    # Convert the list to a NumPy array
+    X_add = np.array(filtered_sequences)
+
+    return X_add
+
+
+def load_saved_data_generator(
+    save_path, data_type, tertiary, num_epochs=2, tertiary_sequences=True
+):
     """
     Generator function to yield data for one ID at a time.
 
@@ -53,10 +85,11 @@ def load_saved_data_generator(save_path, data_type, tertiary, num_epochs=2):
     numpy.ndarray: Combined input features for a single ID.
     numpy.ndarray: Target values for a single ID.
     """
-    if tertiary == "bert":
-        brent_csv_path = "./Datasets/Brent_spotPrice_Extrapolated.csv"
-    elif tertiary == "gas":
-        brent_csv_path = "./Datasets/Gas_spotPrice_Extrapolated.csv"
+    if not tertiary_sequences:
+        if tertiary == "brent":
+            tertiary_csv_path = "./Datasets/Brent_spotPrice_Extrapolated.csv"
+        elif tertiary == "gas":
+            tertiary_csv_path = "./Datasets/Gas_spotPrice_Extrapolated.csv"
 
     for epoch in range(num_epochs):
         print(f"Starting epoch {epoch + 1}/{num_epochs}")
@@ -88,18 +121,24 @@ def load_saved_data_generator(save_path, data_type, tertiary, num_epochs=2):
                         id_dates[1:, -1]
                     )  # Target date is last date of next sequence
                 target_dates = np.array(target_dates)
-                brent = load_additional_data(brent_csv_path, target_dates)
+                if tertiary_sequences:
+                    tertiary_data = load_additional_data_sequences(
+                        tertiary, target_dates
+                    )
+                else:
+                    tertiary_data = load_additional_data(
+                        tertiary_csv_path, target_dates
+                    )
+                    # Reshape brent to match the number of rows in combined_input
+                    tertiary_data = tertiary_data.reshape(-1, 1)
 
                 combined_input = np.stack(
                     [sequences[id_filter], dates[id_filter]], axis=-1
                 ).reshape(-1, 14)
                 combined_input = combined_input[:-1]
 
-                # Reshape brent to match the number of rows in combined_input
-                brent = brent.reshape(-1, 1)
-
                 # Concatenate brent as an additional feature
-                combined_input = np.concatenate([combined_input, brent], axis=1)
+                combined_input = np.concatenate([combined_input, tertiary_data], axis=1)
 
                 targets_resize = targets[id_filter]
                 targets_resize = targets_resize[:-1]
@@ -123,7 +162,7 @@ def train_and_evaluate_model(
     model = xgb.XGBRegressor(
         objective="reg:squarederror",
         colsample_bytree=0.3,
-        learning_rate=0.001,
+        learning_rate=0.01,
         max_depth=5,
         alpha=10,
         n_estimators=10,
